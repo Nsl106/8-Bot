@@ -40,7 +40,7 @@ object KeepAlive : ListenerAdapter() {
                 }
                 data.set(channelId, "alive")
                 msg.addReaction(Emoji.fromUnicode("U+1F44D")).queue() // Thumbs up emoji
-                Main.update("keeping alive ${msg.channel.asMention}!")
+                Main.report("keeping alive ${msg.channel.asMention}!")
             }
 
             "!diepls" -> {
@@ -50,7 +50,7 @@ object KeepAlive : ListenerAdapter() {
                 }
                 data.remove(channelId)
                 msg.addReaction(Emoji.fromUnicode("U+1F44D")).queue() // Thumbs up emoji
-                Main.update("no longer keeping alive ${msg.channel.asMention}!")
+                Main.report("no longer keeping alive ${msg.channel.asMention}!")
             }
         }
     }
@@ -60,17 +60,17 @@ object KeepAlive : ListenerAdapter() {
         if (data.containsKey(thread.id) && thread.isArchived) {
             thread.manager.setArchived(false).queue()
         }
-        Main.update("Unarchived ${thread.asMention}!")
+        Main.report("Unarchived ${thread.asMention}!")
 
     }
 
     private fun unhideThreads() {
-        Main.update("Checking for threads to unhide!")
+        Main.report("Checking for threads to unhide!")
         for (id in data.getAllKeys()) {
             val thread = Main.jda.getThreadChannelById(id.toString())
             if (thread == null) {
                 data.remove(id.toString())
-                Main.update("Missing Thread?!?! Removed $id from database")
+                Main.report("Missing Thread?!?! Removed $id from database")
                 return
             }
             val lastMessageTime = TimeUtil.getTimeCreated(thread.latestMessageIdLong).toEpochSecond()
@@ -84,7 +84,7 @@ object KeepAlive : ListenerAdapter() {
                 lastActive, now.plus(60, ChronoUnit.MINUTES)
             ) >= thread.autoArchiveDuration.minutes
 
-            Main.update(
+            Main.report(
                 "${thread.asMention} " + ChronoUnit.MINUTES.between(
                     lastActive, now.plus(60, ChronoUnit.MINUTES)
                 ) + " " + thread.autoArchiveDuration.minutes
@@ -97,7 +97,7 @@ object KeepAlive : ListenerAdapter() {
                 manager.setAutoArchiveDuration(AutoArchiveDuration.TIME_1_HOUR).queue {
                     manager.setAutoArchiveDuration(AutoArchiveDuration.TIME_1_WEEK).queue()
                 }
-                Main.update("~~preemptively~~ unhid ${thread.asMention}!")
+                Main.report("~~preemptively~~ unhid ${thread.asMention}!")
             }
         }
     }

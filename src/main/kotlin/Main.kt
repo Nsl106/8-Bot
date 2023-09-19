@@ -1,42 +1,44 @@
-import commands.ForumAdder
-import commands.KeepAlive
+import commands.*
 import config.ConfigData
+import dev.minn.jda.ktx.jdabuilder.default
 import net.dv8tion.jda.api.JDA
-import net.dv8tion.jda.api.JDABuilder
-import net.dv8tion.jda.api.interactions.commands.build.Commands
-import net.dv8tion.jda.api.interactions.commands.build.SubcommandData
 import net.dv8tion.jda.api.requests.GatewayIntent
+import net.dv8tion.jda.api.utils.MemberCachePolicy
+
 
 object Main {
     val jda: JDA
 
     init {
-        jda = initJda(JDABuilder.createDefault(ConfigData.config.discordToken))
+        CommandExecutor.addCommands(Ping, CalendarSync, Authenticate, ForumAdder, KeepAlive, Misc, Profile, RoleChooser)
+
+        jda = default(
+            ConfigData.config.discordToken,
+            enableCoroutines = true,
+        ) {
+            enableIntents(listOf(GatewayIntent.MESSAGE_CONTENT, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES))
+            addEventListeners(CommandExecutor)
+            setMemberCachePolicy(MemberCachePolicy.ALL)
+        }.awaitReady()
+
         initSlashCommands()
     }
 
-    private fun initJda(jda: JDABuilder): JDA {
-        return jda.addEventListeners(KeepAlive, ForumAdder)
-            .enableIntents(GatewayIntent.MESSAGE_CONTENT, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_MESSAGES)
-            .build().awaitReady()
-    }
-
-    fun report(update: String) {
-        println(update)
-        jda.getTextChannelById(ConfigData.config.updateChannelId)?.sendMessage(update)?.queue()
+    fun report(update: Any?) {
+        val msg = update.toString()
+        println(msg)
+        jda.getTextChannelById(ConfigData.config.updateChannelId)?.sendMessage(msg)?.queue()
     }
 
     private fun initSlashCommands() {
-        jda.getGuildById(ConfigData.config.testServerId)?.updateCommands()?.addCommands(
-            Commands.slash("forumadder", "Adds users to all created forum posts and threads depending on their roles")
-                .addSubcommands(
-                    SubcommandData("add", "Adds new parings of commands to roles")
-
-                )
-        )?.queue()
+        jda.updateCommands().addCommands(CommandExecutor.commandData).queue()
     }
+
+    var isLocal = true
 }
 
 fun main() {
-    Main.report("Bot Started!")
+    Main.jda
+    val x = System.getProperty("os.name")
+    Main.isLocal = x.equals("Windows 11")
 }

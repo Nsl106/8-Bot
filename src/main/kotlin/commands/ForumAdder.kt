@@ -1,52 +1,43 @@
 package commands
 
+import CommandBase
 import Main
-import data.DataFile
-import net.dv8tion.jda.api.Permission
+import data.*
+import dev.minn.jda.ktx.interactions.commands.Command
+import dev.minn.jda.ktx.interactions.commands.option
+import dev.minn.jda.ktx.interactions.commands.subcommand
+import dev.minn.jda.ktx.messages.reply_
+import net.dv8tion.jda.api.entities.Role
+import net.dv8tion.jda.api.entities.channel.Channel
 import net.dv8tion.jda.api.entities.channel.ChannelType.*
 import net.dv8tion.jda.api.entities.channel.concrete.ThreadChannel
 import net.dv8tion.jda.api.entities.channel.unions.IThreadContainerUnion
 import net.dv8tion.jda.api.events.channel.ChannelCreateEvent
 import net.dv8tion.jda.api.events.guild.member.GuildMemberRoleAddEvent
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
-import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
-import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
-import net.dv8tion.jda.api.events.message.MessageReceivedEvent
-import net.dv8tion.jda.api.hooks.ListenerAdapter
-import net.dv8tion.jda.api.interactions.components.ActionRow
-import net.dv8tion.jda.api.interactions.components.buttons.Button
-import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu
+import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.SelectTarget
+import util.Menu
 
-object ForumAdder : ListenerAdapter() {
-    private val channelToRoles = DataFile("channelToRoles", javaClass.simpleName)
-    private val rolesToChannels = DataFile("rolesToChannels", javaClass.simpleName)
-    private val threadToMessage = DataFile("threadToMessage", javaClass.simpleName)
+object ForumAdder : CommandBase {
+    private val data = JsonFile(name, name)
 
-    private var selectedRoleIds: List<String> = mutableListOf()
-    private var selectedChannelIds: List<String> = mutableListOf()
+    override fun commandData() =
+        Command(name, "Adds users to all created forum posts and threads depending on their roles") {
+            subcommand("add", "Adds new parings of channels to roles")
+            subcommand("sneak", "Silently adds a role to the channel this command is used in") {
+                option<Role>("role", "The role to add", required = true)
+            }
+            subcommand("list", "Lists all forumadder mappings for this server")
+            subcommand("remove", "Removes all forumadder mappings for a given channel") {
+                option<Channel>("channel", "The channel to unmap", required = true)
+            }
 
-    private fun saveToFile() {
-        val outputMessage = StringBuilder()
-        outputMessage.appendLine("Updated forum adder config")
-        outputMessage.appendLine("Mapped these channels:")
-
-        for (channelId in selectedChannelIds) {
-            channelToRoles.set(channelId, *selectedRoleIds.toTypedArray())
-            outputMessage.appendLine("<#$channelId>")
+            isGuildOnly = true
+            defaultPermissions = DefaultMemberPermissions.DISABLED
         }
 
-        outputMessage.appendLine("To these roles:")
-
-        for (roleId in selectedRoleIds) {
-            rolesToChannels.set(roleId, *selectedChannelIds.toTypedArray())
-            outputMessage.appendLine("<@&$roleId>")
-        }
-
-        Main.report(outputMessage.toString())
-    }
-
-    override fun onChannelCreate(event: ChannelCreateEvent) {
+    override suspend fun onChannelCreate(event: ChannelCreateEvent) {
         // Ensure the channel is a new thread or forum post
         val thread = event.channel.let { if (it.type.isThread) it.asThreadChannel() else return }
 
@@ -54,19 +45,22 @@ object ForumAdder : ListenerAdapter() {
         val parentCategoryId = thread.parentChannel.categoryId
         val parentChannelId = thread.parentChannel.id
 
+        val channelToRoles = data.mainObj.getObjectOrNew("channelToRoles")
+
         val roleIds = if (channelToRoles.containsKey(parentChannelId)) {
-            channelToRoles[parentChannelId] ?: return
+            channelToRoles.getArrayOrNew(parentChannelId)
         } else if (parentCategoryId != null && channelToRoles.containsKey(parentCategoryId)) {
-            channelToRoles[parentCategoryId] ?: return
+            channelToRoles.getArrayOrNew(parentCategoryId)
         } else return
 
         // Send a message in the thread then edit it to include the mentions
         val mentionsText = StringBuilder()
-        for (id in roleIds) mentionsText.append("<@&$id> ")
+        for (id in roleIds) mentionsText.append("<@&${id.asString}> ")
 
+        val threadToMessage = data.mainObj.getObjectOrNew("threadToMessage")
         thread.sendMessage("Adding Users!").queue { msg ->
-            threadToMessage.set(thread.id, msg.id)
-
+            threadToMessage.setValue(thread.id, msg.id)
+            data.save()
             msg.editMessage(mentionsText.toString()).queue { msg2 ->
                 msg2.editMessage(
                     "Added Users!"
@@ -75,9 +69,12 @@ object ForumAdder : ListenerAdapter() {
         }
     }
 
-    override fun onGuildMemberRoleAdd(event: GuildMemberRoleAddEvent) {
+    override suspend fun onRoleAdd(event: GuildMemberRoleAddEvent) {
+        val channelToRoles = data.mainObj.getObjectOrNew("channelToRoles")
+        val threadToMessage = data.mainObj.getObjectOrNew("threadToMessage")
+
         for (role in event.roles) {
-            val channels = (rolesToChannels[role.id] ?: continue).toMutableList()
+            val channels = channelToRoles.asArrayMap().filterValues { it!!.contains(role.id) }.keys.toMutableList()
 
             val iterator = channels.listIterator(channels.size)
 
@@ -87,15 +84,8 @@ object ForumAdder : ListenerAdapter() {
                 val id = iterator.previous()
 
                 when (Main.jda.getGuildChannelById(id)?.type) {
-                    TEXT -> {
-                        val textChannel = Main.jda.getTextChannelById(id) ?: continue
-                        threads.addAll(textChannel.threadChannels)
-                    }
-
-                    FORUM -> {
-                        val forumChannel = Main.jda.getForumChannelById(id) ?: continue
-                        threads.addAll(forumChannel.threadChannels)
-                    }
+                    TEXT -> Main.jda.getTextChannelById(id)?.let { threads.addAll(it.threadChannels) }
+                    FORUM -> Main.jda.getForumChannelById(id)?.let { threads.addAll(it.threadChannels) }
 
                     CATEGORY -> {
                         iterator.remove()
@@ -107,7 +97,7 @@ object ForumAdder : ListenerAdapter() {
             }
 
             for (thread in threads) {
-                val messageId = threadToMessage[thread.id]?.get(0) ?: continue
+                val messageId = threadToMessage.getValue(thread.id) ?: continue
 
                 thread.editMessageById(messageId, event.user.asMention).queue {
                     it.editMessage("Added Users!").queue()
@@ -116,67 +106,80 @@ object ForumAdder : ListenerAdapter() {
         }
     }
 
-    override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
-        if (event.name != "forumadder") return
-
+    override suspend fun onSlashCommand(event: SlashCommandInteractionEvent) {
         when (event.subcommandName) {
-            "add" -> {
-                event.reply("Configuring forum adding command!").mentionRepliedUser(false).setComponents(
-                    ActionRow.of(
-                        EntitySelectMenu.create("roles", SelectTarget.ROLE).setMaxValues(25)
-                            .setPlaceholder("Select the roles!").build()
-                    ), ActionRow.of(
-                        EntitySelectMenu.create("channels", SelectTarget.CHANNEL).setChannelTypes(CATEGORY, FORUM, TEXT)
-                            .setMaxValues(25).setPlaceholder("Select the channels!").build()
-                    ), ActionRow.of(Button.danger("exit", "Exit"))
-                ).queue()
-            }
+            "add" -> handleAdd(event)
+            "sneak" -> handleSneak(event)
+            "list" -> handleList(event)
+            "remove" -> handleRemove(event)
         }
     }
 
-    override fun onMessageReceived(event: MessageReceivedEvent) {
-        if (event.message.contentDisplay == "!resetFA") {
-            event.message.member?.hasPermission(Permission.ADMINISTRATOR).run {
-                channelToRoles.getAllKeys().forEach(channelToRoles::remove)
-                rolesToChannels.getAllKeys().forEach(channelToRoles::remove)
-                threadToMessage.getAllKeys().forEach(channelToRoles::remove)
-            }
+    private fun handleRemove(event: SlashCommandInteractionEvent) {
+        val channelToRoles = data.mainObj.getObjectOrNew("channelToRoles")
+        event.getOption("channel")?.asChannel?.id.let {
+            channelToRoles.remove(it)
+            data.save()
+            event.reply_("Operation Completed!", ephemeral = true).queue()
         }
     }
 
-    override fun onEntitySelectInteraction(event: EntitySelectInteractionEvent) {
-        event.deferEdit().queue()
+    private fun handleList(event: SlashCommandInteractionEvent) {
+        val channelToRoles = data.mainObj.getObjectOrNew("channelToRoles")
 
-        when (event.componentId) {
-            "roles" -> selectedRoleIds = event.mentions.roles.map { it.id }
-            "channels" -> selectedChannelIds = event.mentions.channels.map { it.id }
-        }
+        val guildChannels = event.guild!!.channels.map { it.id }
 
-        if (selectedChannelIds.isNotEmpty() && selectedRoleIds.isNotEmpty()) {
-            val components = event.message.components.toMutableList()
-            components.removeLast()
-            components.add(ActionRow.of(Button.danger("exit", "Exit"), Button.success("save", "Confirm")))
-            event.message.editMessageComponents(components).queue()
+        val mappings = channelToRoles.asMap().filter { guildChannels.contains(it.key) }
+        val reply = StringBuilder()
+        mappings.forEach {
+            val channel = "<#${it.key}>"
+            val roleIds = it.value.asJsonArray.asList().map { j -> j.asString }
+            val roles = StringBuilder().apply { for (id in roleIds) append("<@&$id> ") }.toString()
+
+            reply.appendLine("$channel to $roles")
         }
+        if (reply.isEmpty()) reply.appendLine("No mappings are set in this server!")
+        event.reply_(reply.toString(), ephemeral = true).queue()
     }
 
-    override fun onButtonInteraction(event: ButtonInteractionEvent) {
-        when (event.componentId) {
-            "exit" -> event.editMessage("Canceled!").setComponents().queue()
-            "save" -> {
-                saveToFile()
-                selectedRoleIds = mutableListOf()
-                selectedChannelIds = mutableListOf()
-                event.editMessage("Operation Completed!").setComponents().queue()
-            }
-        }
+    private fun handleSneak(event: SlashCommandInteractionEvent) {
+        val role = event.getOption("role")?.asRole?.asMention
+        event.reply_("Adding users with this role: $role", ephemeral = true).queue()
     }
 
-    private val IThreadContainerUnion.categoryId
-        get() = when (type) {
-            TEXT -> asTextChannel().parentCategoryId
-            NEWS -> asNewsChannel().parentCategoryId
-            FORUM -> asForumChannel().parentCategoryId
-            PRIVATE, UNKNOWN, GROUP, CATEGORY, VOICE, STAGE, GUILD_PUBLIC_THREAD, GUILD_NEWS_THREAD, GUILD_PRIVATE_THREAD -> null
-        }
+    private suspend fun handleAdd(event: SlashCommandInteractionEvent) {
+        val result = Menu(
+            message = "Please select a channel and the roles to be added to it",
+            interaction = event,
+            id = "forumadderadd"
+        ).addEntityMenu(
+            name = "channel",
+            types = listOf(SelectTarget.CHANNEL),
+            placeholder = "Select a channel",
+            channelTypes = listOf(CATEGORY, FORUM, TEXT)
+        ).addEntityMenu(
+            name = "roles",
+            types = listOf(SelectTarget.ROLE),
+            placeholder = "Select roles",
+            valueRange = 1..25,
+        ).execute() ?: return
+
+
+        val channels = result.component1()
+        val roles = result.component2()
+
+        val channelToRoles = data.mainObj.getObjectOrNew("channelToRoles")
+        for (id in channels) channelToRoles.setArray(id, roles)
+
+        data.save()
+    }
 }
+
+
+private val IThreadContainerUnion.categoryId
+    get() = when (type) {
+        TEXT -> asTextChannel().parentCategoryId
+        NEWS -> asNewsChannel().parentCategoryId
+        FORUM -> asForumChannel().parentCategoryId
+        PRIVATE, UNKNOWN, GROUP, CATEGORY, VOICE, STAGE, GUILD_PUBLIC_THREAD, GUILD_NEWS_THREAD, GUILD_PRIVATE_THREAD -> null
+    }

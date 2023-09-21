@@ -179,8 +179,7 @@ object CalendarSync : CommandBase {
         val minTime = Instant.now().toDateTime()
         val maxTime = Instant.now().plus(14, ChronoUnit.DAYS).toDateTime()
 
-        return calendar.events().list(id).setTimeMax(maxTime).setTimeMin(minTime).setOrderBy("startTime")
-            .setSingleEvents(true).execute().items
+        return calendar.events().list(id).setTimeMax(maxTime).setTimeMin(minTime).setOrderBy("startTime").setSingleEvents(true).execute().items
     }
 
     private fun copyToDiscord() {
@@ -204,6 +203,8 @@ object CalendarSync : CommandBase {
 
             // Copy all the events into discord
             for (event in events) {
+                if (event.start.dateTime == null) continue
+
                 val name = event.summary ?: "Unnamed Event"
                 val color: String? = event.colorId
 

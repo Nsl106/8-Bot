@@ -1,8 +1,11 @@
+val ktor_version: String by project
+
 plugins {
-    kotlin("jvm") version "1.8.0"
+    kotlin("jvm") version "2.0.0-RC3"
     id("com.github.johnrengelman.shadow") version "7.1.1"
 
-    application
+    kotlin("plugin.serialization") version "2.0.0-RC3"
+    id("application")
 }
 
 group = "org.team8bot"
@@ -14,30 +17,36 @@ repositories {
 }
 
 dependencies {
-    implementation("net.dv8tion:JDA:5.0.0-beta.9") {
+    implementation("net.dv8tion:JDA:5.0.0-beta.24") {
         exclude(module = "opus-java")
     }
-    implementation("ch.qos.logback:logback-classic:1.2.9")
+    implementation("ch.qos.logback:logback-classic:1.4.12")
 
-    implementation("com.google.api-client:google-api-client:2.0.0")
-    implementation("com.google.oauth-client:google-oauth-client-jetty:1.34.1")
-    implementation("com.google.apis:google-api-services-calendar:v3-rev20220715-2.0.0")
-
+    implementation("org.mongodb:mongodb-driver-kotlin-coroutine:5.1.0")
+    implementation("org.mongodb:bson-kotlinx:5.1.0")
     implementation("com.google.code.gson:gson:2.10.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.1")
-    implementation("com.github.minndevelopment:jda-ktx:9370cb1")
+    implementation("com.github.minndevelopment:jda-ktx:78dbf82")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.0-RC")
+
+    implementation("io.ktor:ktor-client-core:$ktor_version")
+    implementation("io.ktor:ktor-client-cio:$ktor_version")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor_version")
+    implementation("io.ktor:ktor-client-content-negotiation:$ktor_version")
 }
 
 kotlin {
     jvmToolchain(11)
 }
 
-task<Exec>("deploy") {
-    dependsOn("shadowJar")
-    commandLine("cmd", "/c", "Powershell  -File  deploy\\deploy.ps1")
+application {
+    mainClass.set("org.team9432.discord.eightbot.MainKt")
 }
 
-application {
-    mainClass.set("MainKt")
+tasks.withType<Jar> {
+    manifest {
+        attributes["Main-Class"] = "org.team9432.discord.eightbot.MainKt"
+    }
 }

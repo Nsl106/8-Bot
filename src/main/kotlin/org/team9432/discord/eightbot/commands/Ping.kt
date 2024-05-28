@@ -1,14 +1,14 @@
-package commands
+package org.team9432.discord.eightbot.commands
 
-import CommandBase
 import dev.minn.jda.ktx.interactions.commands.Command
 import dev.minn.jda.ktx.messages.reply_
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
+import org.team9432.discord.eightbot.CommandBase
 
 
-object Ping : CommandBase {
+object Ping: CommandBase {
     override fun commandData() = Command(name, "ping")
 
     override suspend fun onMessage(event: MessageReceivedEvent) {

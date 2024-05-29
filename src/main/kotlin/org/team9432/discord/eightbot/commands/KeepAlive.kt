@@ -133,10 +133,12 @@ object KeepAlive: CommandBase {
             val uncheckedThreads = keptAliveThreadIds.toMutableSet()
 
             closedThreads.forEach {
-                uncheckedThreads.remove(it.id)
+                val threadId = it.id
+                uncheckedThreads.remove(threadId)
 
-                if (it.id in keptAliveThreadIds) {
+                if (threadId in keptAliveThreadIds) {
                     it.manager.setArchived(false).queue()
+                    setLastUpdateToNow(threadId)
                 }
             }
 
@@ -164,10 +166,11 @@ object KeepAlive: CommandBase {
 
                 if (willHideBetweenChecks) {
                     // Change the thread's auto archive time because this counts as 'activity' and will unhide the thread
-                    thread.manager.setAutoArchiveDuration(ThreadChannel.AutoArchiveDuration.TIME_1_HOUR).queue {
-                        thread.manager.setAutoArchiveDuration(ThreadChannel.AutoArchiveDuration.TIME_1_WEEK).queue()
-                        sendUpdate("~~preemptively~~ unhid ${thread.asMention}!")
-                    }
+                    thread.manager.setAutoArchiveDuration(ThreadChannel.AutoArchiveDuration.TIME_1_HOUR).await()
+                    thread.manager.setAutoArchiveDuration(ThreadChannel.AutoArchiveDuration.TIME_1_WEEK).await()
+
+                    setLastUpdateToNow(thread.id)
+                    sendUpdate("~~preemptively~~ unhid ${thread.asMention}!")
                 }
             }
 

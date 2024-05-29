@@ -1,0 +1,9 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Run Remote Jar" type="JarApplication">
+    <target name="discordbot@192.168.0.81:22" />
+    <option name="JAR_PATH" value="$PROJECT_DIR$/build/libs/Bot-all.jar" />
+    <option name="PROGRAM_PARAMETERS" value="config.json" />
+    <option name="ALTERNATIVE_JRE_PATH" />
+    <method v="2" />
+  </configuration>
+</component>
